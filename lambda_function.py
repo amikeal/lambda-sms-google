@@ -23,4 +23,17 @@ def addrow(sender, text):
     # Insert the data into the opened worksheet
     field_list = [timestamp('%Y-%m-%d %H:%M:%S'), sender, text]
     worksheet.insert_row(field_list, index=1)
-    #print "Appended: ", field_list, " to Worksheet named ", worksheet.title
+    print "Appended: ", field_list, " to Worksheet named ", worksheet.title
+    return True
+
+def lambda_handler(event, context):
+    # turn off logging once things are up and running
+    print("Received event: " + json.dumps(event, indent=2))
+    sender = event["fromNumber"]
+    msg_body = event["body"]
+    if addrow(sender, msg_body):
+        # Return a success message
+        return 'SUCCESS'
+    else:
+        # Raise an error to pass to Twilio
+        raise Exception('ERROR')

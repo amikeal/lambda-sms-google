@@ -1,3 +1,6 @@
+# credentials files with sensitive info
+creds.json
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

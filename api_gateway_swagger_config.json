@@ -1,0 +1,67 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "version": "2016-08-28T04:54:07Z",
+    "title": "SMS Consumer"
+  },
+  "host": "y0o0o4qauh.execute-api.us-east-1.amazonaws.com",
+  "basePath": "/api",
+  "schemes": [
+    "https"
+  ],
+  "paths": {
+    "/record_checkin": {
+      "get": {
+        "consumes": [
+          "application/json"
+        ],
+        "produces": [
+          "application/xml"
+        ],
+        "responses": {
+          "200": {
+            "description": "200 response",
+            "schema": {
+              "$ref": "#/definitions/Empty"
+            }
+          },
+          "201": {
+            "description": "201 response",
+            "schema": {
+              "$ref": "#/definitions/Empty"
+            }
+          }
+        },
+        "x-amazon-apigateway-integration": {
+          "responses": {
+            "default": {
+              "statusCode": "200",
+              "responseTemplates": {
+                "application/xml": "#set($inputRoot = $input.path('$'))\n<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Response>\n    <Message>\n        <Body>\n            Attendance checkin recorded.\n        </Body>\n    </Message>\n</Response> "
+              }
+            },
+            "ERROR": {
+              "statusCode": "201",
+              "responseTemplates": {
+                "application/xml": "#set($inputRoot = $input.path('$'))\n<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Response>\n    <Message>\n        <Body>\n            An error occurred, and your attendance was not recorded. Please speak with your instructor.\n        </Body>\n    </Message>\n</Response> "
+              }
+            }
+          },
+          "requestTemplates": {
+            "application/json": "{\n    \"body\" : \"$input.params('Body')\",\n    \"fromNumber\" :  \"$input.params('From')\",\n    \"fromLocation\" : \"$input.params('FromCity'), $input.params('FromState')  ZIP: $input.params('FromZip')\"\n}"
+          },
+          "uri": "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:319720212600:function:AcceptAndLogCheckin/invocations",
+          "passthroughBehavior": "never",
+          "httpMethod": "POST",
+          "type": "aws"
+        }
+      }
+    }
+  },
+  "definitions": {
+    "Empty": {
+      "type": "object",
+      "title": "Empty Schema"
+    }
+  }
+}

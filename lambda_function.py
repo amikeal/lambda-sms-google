@@ -11,7 +11,7 @@ credentials = ServiceAccountCredentials.from_json_keyfile_name('creds.json', sco
 def log(msg):
     print(timestamp('%H:%M:%S'), ": ", msg)
 
-def addrow(sender, text):
+def addrow(sender, location, text):
     gc = gspread.authorize(credentials)
     sheet = gc.open_by_key('1bGpMTkkInMjrupVQouydb2WZDH7c2jeIOtlcYbgOC6g')
     log("Opening default worksheet 'INBOX'")
@@ -29,7 +29,7 @@ def addrow(sender, text):
         log("Found workshet... opening worksheet for writing")
         worksheet = sheet.worksheet(date_name)
     # Insert the data into the opened worksheet
-    field_list = [timestamp('%Y-%m-%d %H:%M:%S'), sender] + [x.strip() for x in text.split(',')]
+    field_list = [timestamp('%Y-%m-%d %H:%M:%S'), sender, location] + [x.strip() for x in text.split(',')]
     log("Appending new row to worksheet")
     worksheet.append_row(field_list)
     log("Appended: %s to Worksheet named %s" % (field_list, worksheet.title))
@@ -39,8 +39,9 @@ def lambda_handler(event, context):
     # turn off logging once things are up and running
     log("Received event: " + json.dumps(event, indent=2))
     sender = event["fromNumber"]
+    location = event["fromLocation"]
     msg_body = event["body"]
-    if addrow(sender, msg_body):
+    if addrow(sender, location, msg_body):
         # Return a success message
         return 'SUCCESS'
     else:

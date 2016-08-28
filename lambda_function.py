@@ -29,7 +29,7 @@ def addrow(sender, text):
         log("Found workshet... opening worksheet for writing")
         worksheet = sheet.worksheet(date_name)
     # Insert the data into the opened worksheet
-    field_list = [timestamp('%Y-%m-%d %H:%M:%S'), sender, text]
+    field_list = [timestamp('%Y-%m-%d %H:%M:%S'), sender] + [x.strip() for x in text.split(',')]
     log("Appending new row to worksheet")
     worksheet.append_row(field_list)
     log("Appended: %s to Worksheet named %s" % (field_list, worksheet.title))

@@ -1,8 +1,12 @@
 import json
 import requests
+import logging as log
 from time import strftime as timestamp
 from oauth2client.service_account import ServiceAccountCredentials
 import gspread
+
+# Set a logging level
+LOG_LEVEL = log.DEBUG
 
 # Setup access to Google sheets
 scopes = ['https://spreadsheets.google.com/feeds']

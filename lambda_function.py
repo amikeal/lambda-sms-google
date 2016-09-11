@@ -40,6 +40,7 @@ def addrow(sender, location, text):
 
 def lambda_handler(event, context):
     # turn off logging once things are up and running
+    log.basicConfig(level=LOG_LEVEL, format='%(asctime)s %(message)s')
     log.info("Received event: " + json.dumps(event, indent=2))
     sender = event["fromNumber"]
     location = event["fromLocation"]

@@ -13,9 +13,7 @@ log.basicConfig(level=LOG_LEVEL, format='%(asctime)s %(message)s')
 scopes = ['https://spreadsheets.google.com/feeds']
 credentials = ServiceAccountCredentials.from_json_keyfile_name('creds.json', scopes=scopes)
 
-def log(msg):
-    print(timestamp('%H:%M:%S'), ": ", msg)
-
+# Utility function to parse the message and add a row to a Google Sheet
 def addrow(sender, location, text):
     gc = gspread.authorize(credentials)
     sheet = gc.open_by_key('1bGpMTkkInMjrupVQouydb2WZDH7c2jeIOtlcYbgOC6g')

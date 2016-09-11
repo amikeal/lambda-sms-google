@@ -1,13 +1,14 @@
 import json
 import requests
-import logging as log
+import logging
 from time import strftime as timestamp
 from oauth2client.service_account import ServiceAccountCredentials
 import gspread
 
-# Set a logging level, include timestamp
+# Set a logging level
 LOG_LEVEL = log.DEBUG
-log.basicConfig(level=LOG_LEVEL, format='%(asctime)s %(message)s')
+log = logging.getLogger()
+log.setLevel(LOG_LEVEL)
 
 # Setup access to Google sheets
 scopes = ['https://spreadsheets.google.com/feeds']
@@ -24,7 +25,7 @@ def addrow(sender, location, text):
     worksheet_list = sheet.worksheets()
     worksheet_names = [w.title for w in worksheet_list]
     date_name = timestamp('%Y-%m-%d')
-    log.info("Checking for existing worksheet with title: %s" % (date_name))
+    log.info("Checking for existing worksheet with title: {}".format(date_name))
     if date_name not in worksheet_names:
         log.info("Named worksheet not found... creating worksheet")
         worksheet = sheet.add_worksheet(title=date_name, rows="1", cols="20")
@@ -35,19 +36,22 @@ def addrow(sender, location, text):
     field_list = [timestamp('%Y-%m-%d %H:%M:%S'), sender, location] + [x.strip() for x in text.split(',')]
     log.info("Appending new row to worksheet (calling gspread.append_row()... )")
     worksheet.append_row(field_list)
-    log.info("Appended: %s to Worksheet named %s" % (field_list, worksheet.title))
+    log.info("Appended: {} to Worksheet named {}".format(field_list, worksheet.title))
     return True
 
 def lambda_handler(event, context):
     # turn off logging once things are up and running
-    log.basicConfig(level=LOG_LEVEL, format='%(asctime)s %(message)s')
     log.info("Received event: " + json.dumps(event, indent=2))
     sender = event["fromNumber"]
     location = event["fromLocation"]
     msg_body = event["body"]
+    log.debug("Calling addrow() with args '{}, '{}', '{}'".format(sender, location, msg_body))
+
+    # TODO:  Change to try-catch block?
     if addrow(sender, location, msg_body):
         # Return a success message
         return 'SUCCESS'
     else:
         # Raise an error to pass to Twilio
+        log.error("Caught exception from addrow()...")
         raise Exception('ERROR')

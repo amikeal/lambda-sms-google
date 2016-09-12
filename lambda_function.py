@@ -7,8 +7,6 @@ import gspread
 
 # Set a logging level
 LOG_LEVEL = log.DEBUG
-log = logging.getLogger()
-log.setLevel(LOG_LEVEL)
 
 # Setup access to Google sheets
 scopes = ['https://spreadsheets.google.com/feeds']
@@ -41,6 +39,8 @@ def addrow(sender, location, text):
 
 def lambda_handler(event, context):
     # turn off logging once things are up and running
+    log = logging.getLogger()
+    log.setLevel(LOG_LEVEL)
     log.info("Received event: " + json.dumps(event, indent=2))
     sender = event["fromNumber"]
     location = event["fromLocation"]

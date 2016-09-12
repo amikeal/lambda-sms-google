@@ -6,7 +6,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 import gspread
 
 # Set a logging level
-LOG_LEVEL = log.DEBUG
+LOG_LEVEL = logging.DEBUG
 
 # Setup access to Google sheets
 scopes = ['https://spreadsheets.google.com/feeds']

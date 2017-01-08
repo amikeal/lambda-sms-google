@@ -39,7 +39,7 @@ def create_worksheet(http_session, worksheet_name):
         if d['properties']['title'] == worksheet_name:
             log.debug("Found worksheet... using worksheet for writing")
             return True
-        else
+        else:
             log.info("Named worksheet not found... creating new worksheet")
             r = http_session.post("{}/{}:batchUpdate".format(API_BASE, SHEET_KEY), data=json.dumps(payload))
             return True

@@ -1,9 +1,18 @@
 import json
 import requests
 import logging
+import re
 from time import strftime as timestamp
 from oauth2client.service_account import ServiceAccountCredentials
-import gspread
+
+# Key for the Google Sheet to write to
+SHEET_KEY = '1bGpMTkkInMjrupVQouydb2WZDH7c2jeIOtlcYbgOC6g'
+AUTH_SCOPE = ['https://spreadsheets.google.com/feeds']
+AUTH_FILE = 'creds.json'
+API_BASE = 'https://sheets.googleapis.com/v4/spreadsheets'
+
+# Text parsing options
+SPLIT_AGGRESIVE = False
 
 # Set a logging level
 LOG_LEVEL = logging.DEBUG
@@ -12,34 +21,76 @@ LOG_LEVEL = logging.DEBUG
 log = logging.getLogger()
 log.setLevel(LOG_LEVEL)
 
-# Setup access to Google sheets
-scopes = ['https://spreadsheets.google.com/feeds']
-credentials = ServiceAccountCredentials.from_json_keyfile_name('creds.json', scopes=scopes)
+
+# Utility function to create a named worksheet in the current Sheet
+def create_worksheet(http_session, worksheet_name):
+    payload = {
+        "requests": [
+            {"addSheet": {"properties": {"title": worksheet_name}}}
+        ]
+    }
+
+    log.debug("Fetching list of worksheets...")
+    r = http_session.get("{}/{}?&fields=sheets.properties".format(API_BASE, SHEET_KEY))
+    response = json.loads(r.content)
+
+    log.info("Checking for existing worksheet with title: '{}'".format(worksheet_name))
+    for d in response['sheets']:
+        if d['properties']['title'] == worksheet_name:
+            log.debug("Found worksheet... using worksheet for writing")
+            return True
+        else
+            log.info("Named worksheet not found... creating new worksheet")
+            r = http_session.post("{}/{}:batchUpdate".format(API_BASE, SHEET_KEY), data=json.dumps(payload))
+            return True
+
+
+# Utility function to instantiate auth header
+def authorize_session():
+    credentials = ServiceAccountCredentials.from_json_keyfile_name(AUTH_FILE, scopes=AUTH_SCOPE)
+
+    if not credentials.access_token or \
+            (hasattr(credentials, 'access_token_expired') and credentials.access_token_expired):
+        import httplib2
+        credentials.refresh(httplib2.Http())
+
+    session = requests.Session()
+    session.headers.update({'Authorization': 'Bearer ' + credentials.access_token})
+    return session
 
 # Utility function to parse the message and add a row to a Google Sheet
 def addrow(sender, location, text):
-    gc = gspread.authorize(credentials)
-    sheet = gc.open_by_key('1bGpMTkkInMjrupVQouydb2WZDH7c2jeIOtlcYbgOC6g')
-    log.info("Opening default worksheet 'INBOX'")
-    worksheet = sheet.worksheet("INBOX")
-    # Check to see if a worksheet for today's date exists; if not, create it
-    log.info("Fetching list of worksheets...")
-    worksheet_list = sheet.worksheets()
-    worksheet_names = [w.title for w in worksheet_list]
-    date_name = timestamp('%Y-%m-%d')
-    log.info("Checking for existing worksheet with title: {}".format(date_name))
-    if date_name not in worksheet_names:
-        log.info("Named worksheet not found... creating worksheet")
-        worksheet = sheet.add_worksheet(title=date_name, rows="1", cols="20")
-    else:
-        log.info("Found workshet... opening worksheet for writing")
-        worksheet = sheet.worksheet(date_name)
+
+    # Authorize to the Google Sheet
+    http_session = authorize_session()
+
+    # Open a worksheet with a title of today's date
+    worksheet_title = timestamp('%Y-%m-%d')
+    create_worksheet(http_session, worksheet_title)
+
     # Insert the data into the opened worksheet
-    field_list = [timestamp('%Y-%m-%d %H:%M:%S'), sender, location] + [x.strip() for x in text.split(',')]
-    log.info("Appending new row to worksheet (calling gspread.append_row()... )")
-    worksheet.append_row(field_list)
-    log.info("Appended: {} to Worksheet named {}".format(field_list, worksheet.title))
-    return True
+    #split_text = [x.strip() for x in text.split(',')]
+    if SPLIT_AGGRESIVE:
+        split_text = re.split('\s*,\s*', text) # split on commas only
+    else:
+        split_text = re.split('\W+', text)  # split on any non-word char
+    field_list = [timestamp('%Y-%m-%d %H:%M:%S'), sender, location] + split_text
+    log.info("Appending new row to worksheet")
+    #max_col = chr(len(split_text) + 70)  # Calculate the letter value for the widest column
+    append_url = "{}/{}/values/{}:append?valueInputOption=RAW".format(API_BASE, SHEET_KEY, worksheet_title)
+    append_data = {
+        "range": "{}".format(worksheet_title),
+        "majorDimension": "ROWS",
+        "values": [ field_list, ],
+    }
+    r = http_session.post(append_url, data=json.dumps(append_data))
+    # SHOULD MATCH -- PUT https://sheets.googleapis.com/v4/spreadsheets/{SHEET_KEY}/values/{worksheet_title}:append?valueInputOption=RAW
+    if r.status_code == requests.codes.ok:
+        log.debug("Appended: {} to Worksheet named {}".format(field_list, worksheet_title))
+        return True
+    else:
+        return False
+
 
 def lambda_handler(event, context):
     log.info("Received event: " + json.dumps(event, indent=2))

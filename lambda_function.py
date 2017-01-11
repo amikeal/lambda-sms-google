@@ -143,7 +143,7 @@ def verify_registration(cell_number, customer_number):
         Verify that the sender is registered to the current customer.
         Returns the student ID for the sender, or None if not found.
     '''
-    return get_registered_students(customer_number).get(cell_number)
+    return get_registered_numbers(customer_number).get(cell_number)
 
 def clean_number(cell_number):
     if cell_number[0] == "+":
@@ -161,7 +161,7 @@ def lambda_handler(event, context):
     if match:
         student_id = match.group(1)
         log.debug("Calling register_number() with arg '{}'".format(student_id))
-        if register_number(student_id):
+        if register_number(student_id, sender_number, customer_number):
             return "OK - student ID {} has been registered to this phone number.".format(student_id)
 
     else:

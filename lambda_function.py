@@ -149,7 +149,7 @@ def lambda_handler(event, context):
         student_id = verify_registration(sender_number, customer_number)
         if not student_id:
             return "Oops - we don't know this number. To use this service, \
-                    first register with your student ID by texting REGISTER <my_ID_here>"
+                    first register with your student ID by texting REGISTER &lt;my_ID_here>"
 
         # We've confirmed the number is registered, so go ahead and write the msg into Google Sheets
         if addrow(customer_number, student_id, sender_number, sender_location, msg_body):

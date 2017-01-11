@@ -2,6 +2,7 @@ import json
 import requests
 import logging
 import re
+import decimal
 from time import strftime as timestamp
 from oauth2client.service_account import ServiceAccountCredentials
 
@@ -21,6 +22,16 @@ LOG_LEVEL = logging.DEBUG
 log = logging.getLogger()
 log.setLevel(LOG_LEVEL)
 
+
+# Helper class to convert a DynamoDB item to JSON.
+class DecimalEncoder(json.JSONEncoder):
+    def default(self, o):
+        if isinstance(o, decimal.Decimal):
+            if o % 1 > 0:
+                return float(o)
+            else:
+                return int(o)
+        return super(DecimalEncoder, self).default(o)
 
 # Utility function to create a named worksheet in the current Sheet
 def create_worksheet(http_session, worksheet_name):
@@ -59,7 +70,7 @@ def authorize_session():
     return session
 
 # Utility function to parse the message and add a row to a Google Sheet
-def addrow(sender, location, text):
+def addrow(customer_number, student_id, sender, location, text):
 
     # Authorize to the Google Sheet
     http_session = authorize_session()
@@ -74,7 +85,7 @@ def addrow(sender, location, text):
         split_text = re.split('\s*,\s*', text) # split on commas only
     else:
         split_text = re.split('\W+', text)  # split on any non-word char
-    field_list = [timestamp('%Y-%m-%d %H:%M:%S'), sender, location] + split_text
+    field_list = [timestamp('%Y-%m-%d %H:%M:%S'), sender, location, student_id] + split_text
     log.info("Appending new row to worksheet")
     #max_col = chr(len(split_text) + 70)  # Calculate the letter value for the widest column
     append_url = "{}/{}/values/{}:append?valueInputOption=RAW".format(API_BASE, SHEET_KEY, worksheet_title)
@@ -91,19 +102,62 @@ def addrow(sender, location, text):
     else:
         return False
 
+def register_number(student_id):
+    return "OK - student ID {} has been registered to this phone number.".format(student_id)
+
+def verify_registration(cell_number, customer_number):
+    ''' For the current customer (toNumber in Twilio), query for the metadata
+        and retrieve all registered student_ids. Return the ID for the sending
+        number (fromNumber in Twilio), or 'None' if not yet registered.
+    '''
+    import boto3
+    from boto3.dynamodb.conditions import Key
+    from botocore.exceptions import ClientError
+    dynamo = boto3.resource('dynamodb').Table('SMSCustomers')
+    try:
+        response = dynamo.query(
+            IndexName='SMSNumber-index',
+            KeyConditionExpression=Key('SMSNumber').eq(customer_number)
+        )
+    except ClientError as e:
+        print("ERROR: " + e.response['Error']['Message'])
+    else:
+        numbers_map = response['Items'][0]['RegisteredNumbers']
+        return numbers_map.get(cell_number)
+        #return "This phone number has been registered with the ID {}".format(student_id)
+
+def clean_number(cell_number):
+    if cell_number[0] == "+":
+        return cell_number[1:]
 
 def lambda_handler(event, context):
     log.info("Received event: " + json.dumps(event, indent=2))
-    sender = event["fromNumber"]
-    location = event["fromLocation"]
+    sender_number = clean_number(event["fromNumber"])
+    sender_location = event["fromLocation"]
+    customer_number = clean_number(event["toNumber"])
     msg_body = event["body"]
-    log.debug("Calling addrow() with args '{}, '{}', '{}'".format(sender, location, msg_body))
 
-    # TODO:  Change to try-catch block?
-    if addrow(sender, location, msg_body):
-        # Return a success message
-        return 'SUCCESS'
+    # Determine if the sender is registering an SMS number to an account
+    match = re.search("REGISTER (\S+)", msg_body, re.IGNORECASE)
+    if match:
+        student_id = match.group(1)
+        log.debug("Calling register_number() with arg '{}'".format(student_id))
+        register_number(student_id)
+
     else:
-        # Raise an error to pass to Twilio
-        log.error("Caught exception from addrow()...")
-        raise Exception('ERROR')
+        # First verify that the sender is registered
+        student_id = verify_registration(sender_number, customer_number)
+        if not student_id:
+            return "Oops - we don't know this number. To use this service, \
+                    first register with your student ID by texting REGISTER <my_ID_here>"
+
+        # We've confirmed the number is registered, so go ahead and write the msg into Google Sheets
+        if addrow(customer_number, student_id, sender_number, sender_location, msg_body):
+            log.debug("Calling addrow() with args '{}', '{}', '{}', '{}', '{}'".format(
+                customer_number, student_id, sender_number, sender_location, msg_body))
+            # Return a success message
+            return "Attendence checkin recorded; {}".format(timestamp('%Y-%m-%d %H:%M:%S'))
+        else:
+            # Raise an error to pass to Twilio
+            log.error("ERROR calling addrow()...")
+            return "Oh, snap! Something went wrong; please see your instructor."

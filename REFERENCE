@@ -1,0 +1,136 @@
+=============================
+== Create new Google Sheet ==
+=============================
+
+REQUEST PARAMS:
+  None
+
+REQUEST BODY:
+{
+  "properties": {
+    "title": "2SMS Checkin - created 2017-01-09"
+  },
+  "sheets": [
+    {
+      "properties": {
+        "title": "README"
+      },
+      "data": [
+        {
+          "rowData": [
+            {
+              "values": [
+                {
+                  "userEnteredValue": {
+                    "stringValue": "This is a test of the userEnteredValue"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "properties": {
+        "title": "REFERENCE"
+      }
+    }
+  ]
+}
+
+REQUIRES SCOPES:
+https://www.googleapis.com/auth/drive
+https://www.googleapis.com/auth/spreadsheets
+
+
+
+
+https://y0o0o4qauh.execute-api.us-east-1.amazonaws.com/api/create_handler?user=adammikeal%40outlook.com&SMSNumber=151299912
+
+
+STEPS:
+ 1. Create new folder with name as email address
+ 2. Add permissions to new folder (grab ID from response)
+ 2. Copy REFERENCE Sheet into folder with new name (based on date)
+
+
+ =============================
+ == Create new folder       ==
+ =============================
+
+PARAMS:
+  None
+
+BODY:
+{
+  "mimeType": "application/vnd.google-apps.folder",
+  "name": "Test folder name"
+}
+
+ https://www.googleapis.com/auth/drive
+ https://www.googleapis.com/auth/drive.appdata
+ https://www.googleapis.com/auth/drive.file
+
+ {
+  "kind": "drive#file",
+  "id": "0BxS-Dz4ycChcUnNOdWdjQVRQOFE",
+  "name": "Test folder name",
+  "mimeType": "application/vnd.google-apps.folder"
+ }
+
+
+
+=============================
+== Add perms for user to   ==
+==  access Sheet           ==
+=============================
+
+REQUEST PARAMS:
+  fileId: <GoogleFileID>
+  emailMessage: "This is the Google Sheet that will contain the SMS checkin messages from your students."
+  sendNotificationEmail: true
+
+REQUEST BODY:
+{
+  "role": "writer",
+  "type": "user",
+  "emailAddress": "aws-lambda-service@api-access-to-sheets.iam.gserviceaccount.com"
+}
+
+REQUIRES SCOPES:
+https://www.googleapis.com/auth/drive
+https://www.googleapis.com/auth/drive.file
+
+
+
+
+
+=============================
+== Copy an existing Google ==
+== Sheet and return new ID ==
+=============================
+
+REQUEST PARAMS:
+  fileId: <GoogleFileID>
+
+REQUEST BODY:
+{
+  "name": "A copy with a unique name"
+	"parents": [
+		"0BxS-Dz4ycChcUnNOdWdjQVRQOFE"
+	],
+}
+
+REQUIRES SCOPES:
+https://www.googleapis.com/auth/drive
+https://www.googleapis.com/auth/drive.appdata
+https://www.googleapis.com/auth/drive.file
+
+RETURNS:
+{
+ "kind": "drive#file",
+ "id": "1yX8YWBzU7jqp-MtNY4dIBTJJMG7sIdsmSglmRCyKh-U",
+ "name": "A copy with a unique name",
+ "mimeType": "application/vnd.google-apps.spreadsheet"
+}

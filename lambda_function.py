@@ -40,11 +40,9 @@ def create_worksheet(http_session, worksheet_name):
             {"addSheet": {"properties": {"title": worksheet_name}}}
         ]
     }
-
     log.debug("Fetching list of worksheets...")
     r = http_session.get("{}/{}?&fields=sheets.properties".format(API_BASE, SHEET_KEY))
     response = json.loads(r.content)
-
     log.info("Checking for existing worksheet with title: '{}'".format(worksheet_name))
     for d in response['sheets']:
         if d['properties']['title'] == worksheet_name:
@@ -54,7 +52,6 @@ def create_worksheet(http_session, worksheet_name):
             log.info("Named worksheet not found... creating new worksheet")
             r = http_session.post("{}/{}:batchUpdate".format(API_BASE, SHEET_KEY), data=json.dumps(payload))
             return True
-
 
 # Utility function to instantiate auth header
 def authorize_session():
@@ -102,13 +99,22 @@ def addrow(customer_number, student_id, sender, location, text):
     else:
         return False
 
-def register_number(student_id):
-    return "OK - student ID {} has been registered to this phone number.".format(student_id)
+def register_number(student_id, cell_number, customer_number, FORCE=False):
+    ''' LOGIC:
+        1. check all registered IDs for this customer;
+        2. if no duplicate exists, append ID-cell# pair to mapping in DB
+        3. if the ID already exists, then
+            3.1 if ID registered to cell_number, send confirmation mesg
+            3.2 if ID registered to a different number, send warning with instructions
+            3.3 if FORCE flag is True, delete the current registration and goto #2
+    '''
+    return True
 
-def verify_registration(cell_number, customer_number):
-    ''' For the current customer (toNumber in Twilio), query for the metadata
-        and retrieve all registered student_ids. Return the ID for the sending
-        number (fromNumber in Twilio), or 'None' if not yet registered.
+def get_registered_numbers(customer_number):
+    '''
+        Retreive all the currently registered phone numbers for the
+        current customer. Returns a dictionary of phone numbers mapped
+        to student IDs, or False if there was an error.
     '''
     import boto3
     from boto3.dynamodb.conditions import Key
@@ -120,11 +126,24 @@ def verify_registration(cell_number, customer_number):
             KeyConditionExpression=Key('SMSNumber').eq(customer_number)
         )
     except ClientError as e:
-        print("ERROR: " + e.response['Error']['Message'])
+        log.debug("ERROR: " + e.response['Error']['Message'])
     else:
-        numbers_map = response['Items'][0]['RegisteredNumbers']
-        return numbers_map.get(cell_number)
-        #return "This phone number has been registered with the ID {}".format(student_id)
+        # TODO Better error checking for unexpected values here
+        if response["Count"] != 1:
+            log.error("WARNING -- DB query for Twilio number returned more than 1 result!")
+            return False
+        numbers_map = response['Items'][0].get('RegisteredNumbers')
+        if numbers_map:
+            return numbers_map
+        else:
+            return {}
+
+def verify_registration(cell_number, customer_number):
+    '''
+        Verify that the sender is registered to the current customer.
+        Returns the student ID for the sender, or None if not found.
+    '''
+    return get_registered_students(customer_number).get(cell_number)
 
 def clean_number(cell_number):
     if cell_number[0] == "+":
@@ -142,7 +161,8 @@ def lambda_handler(event, context):
     if match:
         student_id = match.group(1)
         log.debug("Calling register_number() with arg '{}'".format(student_id))
-        register_number(student_id)
+        if register_number(student_id):
+            return "OK - student ID {} has been registered to this phone number.".format(student_id)
 
     else:
         # First verify that the sender is registered

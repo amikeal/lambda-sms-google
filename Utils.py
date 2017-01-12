@@ -2,8 +2,12 @@ from __future__ import print_function
 
 import boto3
 import json
+import re
 import decimal
 import logging
+import requests
+from time import strftime as timestamp
+from oauth2client.service_account import ServiceAccountCredentials
 from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
 
@@ -30,6 +34,7 @@ class SMSCustomer(object):
     GoogleAccount = ""
     SheetID = ""
     RegisteredNumbers = {}
+    SplitMethod = ""
 
     _dynamo = None
 
@@ -61,6 +66,7 @@ class SMSCustomer(object):
                 self.GoogleAccount = res["Items"][0]["GoogleAccount"]
                 self.SheetID = res["Items"][0]["SheetID"]
                 self.RegisteredNumbers = res["Items"][0]["RegisteredNumbers"]
+                self.SplitMethod = res["Items"][0]["SplitMethod"]
 
     def register_number(self, phone_number, student_id, FORCE=False):
         ''' LOGIC:
@@ -132,3 +138,86 @@ class SMSCustomer(object):
             Returns the student ID for the sender, or None if not found.
         '''
         return self.RegisteredNumbers.get(phone_number)
+
+
+class GoogleSheet(object):
+
+    SHEET_KEY = ''
+    AUTH_SCOPE = ['https://spreadsheets.google.com/feeds']
+    AUTH_FILE = 'creds.json'
+    API_BASE = 'https://sheets.googleapis.com/v4/spreadsheets'
+
+    _session = None
+
+    def __init__(self, SheetID):
+        self.SHEET_KEY = SheetID
+        self.authorize_session()
+
+    # Utility function to instantiate auth header for Google API calls
+    def authorize_session(self):
+        credentials = ServiceAccountCredentials.from_json_keyfile_name(self.AUTH_FILE, scopes=self.AUTH_SCOPE)
+
+        if not credentials.access_token or \
+                (hasattr(credentials, 'access_token_expired') and credentials.access_token_expired):
+            import httplib2
+            credentials.refresh(httplib2.Http())
+
+        session = requests.Session()
+        session.headers.update({'Authorization': 'Bearer ' + credentials.access_token})
+        self._session = session
+
+    # Utility function to create a named worksheet in a Google Sheet
+    def create_worksheet(self, worksheet_name):
+        payload = {
+            "requests": [
+                {"addSheet": {"properties": {"title": worksheet_name}}}
+            ]
+        }
+        log.debug("Fetching list of worksheets...")
+        r = self._session.get("{}/{}?&fields=sheets.properties".format(self.API_BASE, self.SHEET_KEY))
+        response = json.loads(r.content)
+        log.info("Checking for existing worksheet with title: '{}'".format(worksheet_name))
+        for d in response['sheets']:
+            if d['properties']['title'] == worksheet_name:
+                log.debug("Found worksheet... using worksheet for writing")
+                return True
+            else:
+                log.info("Named worksheet not found... creating new worksheet")
+                r = self._session.post("{}/{}:batchUpdate".format(self.API_BASE, self.SHEET_KEY), data=json.dumps(payload))
+                return True
+
+    # Utility function to parse the message and add a row to a Google Sheet
+    def add_row(self, message, extra_fields, split_method='WHITESPACE'):
+        log.debug("GoogleSheet.add_row() called with args '{}', '{}', '{}'".format(
+            message, extra_fields, split_method))
+
+        # Open a worksheet with a title of today's date
+        worksheet_title = timestamp('%Y-%m-%d')
+        self.create_worksheet(worksheet_title)
+
+        # Insert the data into the opened worksheet
+        if split_method == 'COMMAS':
+            split_text = re.split('\s*,\s*', message) # split on commas only
+        else:
+            split_text = re.split('\W+', message)  # split on any non-word char
+
+        # Combine the elements into the complete field list
+        field_list = [timestamp('%Y-%m-%d %H:%M:%S')] + extra_fields + split_text
+
+        log.info("Appending new row to worksheet")
+        #max_col = chr(len(split_text) + 70)  # Calculate the letter value for the widest column
+        append_url = "{}/{}/values/{}:append?valueInputOption=RAW".format(self.API_BASE, self.SHEET_KEY, worksheet_title)
+        append_data = {
+            "range": "{}".format(worksheet_title),
+            "majorDimension": "ROWS",
+            "values": [ field_list, ],
+        }
+        r = self._session.post(append_url, data=json.dumps(append_data))
+        # SHOULD MATCH -- PUT https://sheets.googleapis.com/v4/spreadsheets/{SHEET_KEY}/values/{worksheet_title}:append?valueInputOption=RAW
+
+        if r.status_code == requests.codes.ok:
+            log.debug("Appended: {} to Worksheet named {}".format(field_list, worksheet_title))
+            return True
+        else:
+            log.debug("API call returned non-200 status code: {}".format(r.status_code))
+            return False

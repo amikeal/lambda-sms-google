@@ -112,8 +112,8 @@ def lambda_handler(event, context):
             FORCE_FLAG = False
         log.debug("Calling register_number() with args '{}', '{}', '{}'".format(student_id, sender_number, customer_number))
         result = customer.register_number(sender_number, student_id, FORCE_FLAG)
-        if result.success:
-            return result.message
+        if result['success']:
+            return result['message']
 
     else:
         # First verify that the sender is registered

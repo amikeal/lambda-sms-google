@@ -90,7 +90,7 @@ class SMSCustomer(object):
                     self._update_number_map()
                     return_msg = "OK - student ID {} has been updated and is now registered to this phone number.".format(student_id)
                 else:
-                    return_msg = "This student ID ({}) is currently registered to phone number {}. If you want to move the ID to this new number, text UPDATE &lt;my_ID_here>"
+                    return_msg = "This student ID ({}) is currently registered to phone number {}. If you want to move the ID to this new number, text UPDATE &lt;my_ID_here>".format(student_id, cel)
 
         # this is a new ID, so write it to the DB
         else:

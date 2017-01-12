@@ -2,7 +2,7 @@ import json
 import requests
 import logging
 import re
-import decimal
+from Utils import SMSCustomer
 from time import strftime as timestamp
 from oauth2client.service_account import ServiceAccountCredentials
 
@@ -23,17 +23,7 @@ log = logging.getLogger()
 log.setLevel(LOG_LEVEL)
 
 
-# Helper class to convert a DynamoDB item to JSON.
-class DecimalEncoder(json.JSONEncoder):
-    def default(self, o):
-        if isinstance(o, decimal.Decimal):
-            if o % 1 > 0:
-                return float(o)
-            else:
-                return int(o)
-        return super(DecimalEncoder, self).default(o)
-
-# Utility function to create a named worksheet in the current Sheet
+# Utility function to create a named worksheet in a Google Sheet
 def create_worksheet(http_session, worksheet_name):
     payload = {
         "requests": [
@@ -53,7 +43,7 @@ def create_worksheet(http_session, worksheet_name):
             r = http_session.post("{}/{}:batchUpdate".format(API_BASE, SHEET_KEY), data=json.dumps(payload))
             return True
 
-# Utility function to instantiate auth header
+# Utility function to instantiate auth header for Google API call
 def authorize_session():
     credentials = ServiceAccountCredentials.from_json_keyfile_name(AUTH_FILE, scopes=AUTH_SCOPE)
 
@@ -69,7 +59,7 @@ def authorize_session():
 # Utility function to parse the message and add a row to a Google Sheet
 def addrow(customer_number, student_id, sender, location, text):
 
-    # Authorize to the Google Sheet
+    # Authorize to use the Google Sheet
     http_session = authorize_session()
 
     # Open a worksheet with a title of today's date
@@ -99,52 +89,6 @@ def addrow(customer_number, student_id, sender, location, text):
     else:
         return False
 
-def register_number(student_id, cell_number, customer_number, FORCE=False):
-    ''' LOGIC:
-        1. check all registered IDs for this customer;
-        2. if no duplicate exists, append ID-cell# pair to mapping in DB
-        3. if the ID already exists, then
-            3.1 if ID registered to cell_number, send confirmation mesg
-            3.2 if ID registered to a different number, send warning with instructions
-            3.3 if FORCE flag is True, delete the current registration and goto #2
-    '''
-    return True
-
-def get_registered_numbers(customer_number):
-    '''
-        Retreive all the currently registered phone numbers for the
-        current customer. Returns a dictionary of phone numbers mapped
-        to student IDs, or False if there was an error.
-    '''
-    import boto3
-    from boto3.dynamodb.conditions import Key
-    from botocore.exceptions import ClientError
-    dynamo = boto3.resource('dynamodb').Table('SMSCustomers')
-    try:
-        response = dynamo.query(
-            IndexName='SMSNumber-index',
-            KeyConditionExpression=Key('SMSNumber').eq(customer_number)
-        )
-    except ClientError as e:
-        log.debug("ERROR: " + e.response['Error']['Message'])
-    else:
-        # TODO Better error checking for unexpected values here
-        if response["Count"] != 1:
-            log.error("WARNING -- DB query for Twilio number returned more than 1 result!")
-            return False
-        numbers_map = response['Items'][0].get('RegisteredNumbers')
-        if numbers_map:
-            return numbers_map
-        else:
-            return {}
-
-def verify_registration(cell_number, customer_number):
-    '''
-        Verify that the sender is registered to the current customer.
-        Returns the student ID for the sender, or None if not found.
-    '''
-    return get_registered_numbers(customer_number).get(cell_number)
-
 def clean_number(cell_number):
     if cell_number[0] == "+":
         return cell_number[1:]
@@ -156,17 +100,24 @@ def lambda_handler(event, context):
     customer_number = clean_number(event["toNumber"])
     msg_body = event["body"]
 
-    # Determine if the sender is registering an SMS number to an account
-    match = re.search("REGISTER (\S+)", msg_body, re.IGNORECASE)
+    customer = SMSCustomer(customer_number)
+
+    # Determine if the sender is registering (or updating) an SMS number to an account
+    match = re.search("(REGISTER|UPDATE) (\S+)", msg_body, re.IGNORECASE)
     if match:
-        student_id = match.group(1)
-        log.debug("Calling register_number() with arg '{}'".format(student_id))
-        if register_number(student_id, sender_number, customer_number):
-            return "OK - student ID {} has been registered to this phone number.".format(student_id)
+        student_id = match.group(2)
+        if match.group(1).upper() == 'UPDATE':
+            FORCE_FLAG = True
+        else:
+            FORCE_FLAG = False
+        log.debug("Calling register_number() with args '{}', '{}', '{}'".format(student_id, sender_number, customer_number))
+        result = customer.register_number(sender_number, student_id, FORCE_FLAG)
+        if result.success:
+            return result.message
 
     else:
         # First verify that the sender is registered
-        student_id = verify_registration(sender_number, customer_number)
+        student_id = customer.verify_registration(sender_number)
         if not student_id:
             return "Oops - we don't know this number. To use this service, first register with your student ID by texting REGISTER &lt;my_ID_here>"
 

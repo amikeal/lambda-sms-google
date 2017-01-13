@@ -48,8 +48,8 @@ def lambda_handler(event, context):
             return "Oops - we don't know this number. To use this service, first register with your student ID by texting REGISTER &lt;my_ID_here>"
 
         # We've confirmed the number is registered, now write the msg into the Google Sheet
-        extra_fields = [sender_number, sender_location, student_id]
-        if sheet.add_row(msg_body, extra_fields, customer.SplitMethod):
+        extra_fields = [sender_number, student_id]
+        if sheet.record_submission(msg_body, extra_fields, customer.SplitMethod):
             # Return a success message
             return "Submission recorded; {}".format(timestamp('%Y-%m-%d %H:%M:%S'))
         else:

@@ -134,3 +134,10 @@ RETURNS:
  "name": "A copy with a unique name",
  "mimeType": "application/vnd.google-apps.spreadsheet"
 }
+
+
+
+
+DynamoDB Reference:
+
+http://docs.aws.amazon.com/amazondynamodb/latest/gettingstartedguide/GettingStarted.Python.03.html#GettingStarted.Python.03.03

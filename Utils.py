@@ -96,7 +96,7 @@ class SMSCustomer(object):
                     self._update_number_map()
                     return_msg = "OK - student ID {} has been updated and is now registered to this phone number.".format(student_id)
                 else:
-                    return_msg = "This student ID ({}) is currently registered to phone number {}. If you want to move the ID to this new number, text UPDATE &lt;my_ID_here>".format(student_id, cel)
+                    return_msg = "This student ID ({}) is currently registered to another phone number (XXX-X{}). If you want to move the ID to this new number, text UPDATE {}".format(student_id, cel[len(cel)-3:], student_id)
 
         # this is a new ID, so write it to the DB
         else:
@@ -186,23 +186,32 @@ class GoogleSheet(object):
                 r = self._session.post("{}/{}:batchUpdate".format(self.API_BASE, self.SHEET_KEY), data=json.dumps(payload))
                 return True
 
-    # Utility function to parse the message and add a row to a Google Sheet
-    def add_row(self, message, extra_fields, split_method='WHITESPACE'):
-        log.debug("GoogleSheet.add_row() called with args '{}', '{}', '{}'".format(
+    # Parse the message, build the field list, and add a row to the Google Sheet
+    def record_submission(self, message, extra_fields, split_method='WHITESPACE'):
+        log.debug("GoogleSheet.record_submission() called with args '{}', '{}', '{}'".format(
             message, extra_fields, split_method))
 
-        # Open a worksheet with a title of today's date
+        # Set the worksheet title to today's date
         worksheet_title = timestamp('%Y-%m-%d')
-        self.create_worksheet(worksheet_title)
 
-        # Insert the data into the opened worksheet
+        # Parse the message according to the split_method param
         if split_method == 'COMMAS':
             split_text = re.split('\s*,\s*', message) # split on commas only
         else:
             split_text = re.split('\W+', message)  # split on any non-word char
 
-        # Combine the elements into the complete field list
+        # Combine the elements (plus a timestamp) into the complete field list
         field_list = [timestamp('%Y-%m-%d %H:%M:%S')] + extra_fields + split_text
+
+        # Call the add_row() method with the assembled arguments
+        return self.add_row(worksheet_title, field_list)
+
+    # Utility function to add a row to a specified worksheet in the Google Sheet
+    def add_row(self, worksheet_title, field_list):
+        log.debug("GoogleSheet.add_row() called with args '{}', '{}'".format(worksheet_title, field_list))
+
+        # Ensure a worksheet with the correct title exists
+        self.create_worksheet(worksheet_title)
 
         log.info("Appending new row to worksheet")
         #max_col = chr(len(split_text) + 70)  # Calculate the letter value for the widest column
@@ -221,3 +230,9 @@ class GoogleSheet(object):
         else:
             log.debug("API call returned non-200 status code: {}".format(r.status_code))
             return False
+
+    def copy_sheet(self, template_id, parent_folder=None):
+        ''' Copies the sheet identified by template_id and returns a new sheet_id.
+            Optionally takes another ID as the parent (containing) folder.
+        '''
+        pass

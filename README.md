@@ -19,7 +19,7 @@ The flow happens like this:
 1. User sends and SMS message to a Twilio number
 2. Twilio receieves the SMS, and calls a webhook with the body of the message (and other Twilio metadata)
 3. The webhook address is a REST API defined by AWS API Gateway
-4. API Gateway takes the incoming Twilio request and converts the data into a JSON payload consumable by an AWS Lanbda process
+4. API Gateway takes the incoming Twilio request and converts the data into a JSON payload consumable by an AWS Lambda process
 5. The Lambda process is triggered by the API Gateway request, and executes the Python function inside `lambda_function.py`
 6. The Python function parses the data from Twilio (including the SMS message body), and writes the data into a Google Sheet (opened using credentials generated from the Google Sheets API)
 7. If the write is successful, Lambda returns a `SUCCESS` response to the API Gateway

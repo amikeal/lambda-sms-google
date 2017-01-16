@@ -12,7 +12,7 @@ from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
 
 __author__ = "Adam Mikeal <adam@mikeal.org>"
-__version__ = "0.01"
+__version__ = "0.02"
 
 log = logging.getLogger()
 
@@ -35,6 +35,8 @@ class SMSCustomer(object):
     SheetID = ""
     RegisteredNumbers = {}
     SplitMethod = ""
+    MessageQuota = 0
+    LastQuotaUpdate = None
 
     _dynamo = None
 
@@ -62,11 +64,14 @@ class SMSCustomer(object):
             if res["Count"] != 1:
                 log.error("WARNING -- DB query for Twilio number returned more than 1 result!")
             else:
+                # [a for a in dir(f) if not a.startswith('__') and not callable(getattr(f,a))]
                 self.CustomerID = res["Items"][0]["CustomerID"]
                 self.GoogleAccount = res["Items"][0]["GoogleAccount"]
                 self.SheetID = res["Items"][0]["SheetID"]
                 self.RegisteredNumbers = res["Items"][0]["RegisteredNumbers"]
                 self.SplitMethod = res["Items"][0]["SplitMethod"]
+                self.MessageQuota = res["Items"][0]["MessageQuota"]
+                self.LastQuotaUpdate = res["Items"][0]["LastQuotaUpdate"]
 
     def register_number(self, phone_number, student_id, FORCE=False):
         ''' LOGIC:
@@ -109,28 +114,75 @@ class SMSCustomer(object):
             'message': return_msg
         }
 
-    def _update_number_map(self):
+    def  _update_field_value(self, field_name, field_value=None, update_method='SET'):
         '''
-            Updates the map of registered phone numbers / IDs in the DB
+            For a given field name, updates the DynamoDB record
+            with the current value in the object
         '''
+        if update_method not in ('SET', 'ADD'):
+            log.error("ERROR: update method must be one of 'SET' or 'ADD'")
+            return False
+
+        # If we were passed a field_value, the it overrides the current instance attribute
+        if field_value is not None:
+            new_value = field_value
+        else:
+            new_value = getattr(self, field_name)
+
+        if update_method == 'ADD':
+            # the UpdateExpression for ADD doesn't have an operator
+            update_operator = ''
+            # check to see if we were passed a number or a string
+            if isinstance(getattr(self, field_name), (int, float)) is False:
+                # attempt to coerce the value into a number
+                try:
+                    new_value = int(new_value)
+                except ValueError:
+                    # Int didn't work; let's try float
+                    try:
+                        new_value = int(new_value)
+                    except ValueError:
+                        # if unable to make a number, then we cannot use the ADD method
+                        return False
+        else:
+            # else we are using SET method so we need an '='
+            update_operator = '='
+
         try:
             res = self._dynamo.update_item(
                 Key={
                     'CustomerID': self.CustomerID
                 },
-                UpdateExpression="set RegisteredNumbers = :l",
+                UpdateExpression="{} {} {} :val".format(update_method, field_name, update_operator),
                 ExpressionAttributeValues={
-                    ':l': self.RegisteredNumbers
+                    ':val': new_value
                 },
                 ReturnValues="UPDATED_NEW"
             )
         except ClientError as e:
-            log.error(e.res['Error']['Message'])
+            log.error(e.response['Error']['Message'])
         else:
             if res['ResponseMetadata']['HTTPStatusCode'] == 200:
+                # Update the attr in the object to match the DB
+                setattr(self, field_name, res['Attributes'][field_name])
                 return True
             else:
                 return False
+
+    def _update_number_map(self):
+        '''
+            Updates the map of registered phone numbers / IDs in the DB
+        '''
+        return self._update_field_value("RegisteredNumbers")
+
+    def decrement_message_quota(self, message_count):
+        '''
+            Decrements the MessageQuota field in the DB record by the given value
+        '''
+        if message_count > 0:
+            message_count *= -1
+
+        return self._update_field_value('MessageQuota', message_count, 'ADD')
 
     def verify_registration(self, phone_number):
         '''

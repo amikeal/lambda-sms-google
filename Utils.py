@@ -12,7 +12,7 @@ from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
 
 __author__ = "Adam Mikeal <adam@mikeal.org>"
-__version__ = "0.02"
+__version__ = "0.04"
 
 log = logging.getLogger()
 
@@ -38,40 +38,94 @@ class SMSCustomer(object):
     MessageQuota = 0
     LastQuotaUpdate = None
 
-    _dynamo = None
+    _db_meta = None
+    _db_map = None
 
-    def __init__(self, phone_number):
-        self._dynamo = boto3.resource('dynamodb').Table('SMSCustomers')
+    def __init__(self, phone_number, new_record=False):
+        self._db_meta = boto3.resource('dynamodb').Table('SMSCustomers')
+        self._db_map = boto3.resource('dynamodb').Table('RegisteredNumbers')
         self.SMSNumber = phone_number
-        self._load_data()
+        if new_record is False:
+            self._load_data()
 
     def __repr__(self):
         return "Customer [ID: {}] on number {}".format(self.CustomerID, self.SMSNumber)
 
+    @classmethod
+    def create(cls, phone_number, email_address):
+        # a new costomer object with no data but a phone_number
+        new_customer = cls(phone_number, True)
+        new_props = {
+            'CustomerID': int(phone_number) % 10000000000, # since phone_number is unique, convert to int for ID
+            'SMSNumber': phone_number,
+            'GoogleAccount': email_address,
+            'SplitMethod': 'WHITESPACE',
+            'MessageQuota': 100,
+            'SheetID': '_',
+            'LastQuotaUpdate': timestamp('%Y-%m-%dT%H:%M:%S')
+        }
+
+        # push basic record to the DB
+        try:
+            res = new_customer._db_meta.put_item(
+                Item = new_props
+            )
+        except ClientError as e:
+            log.error("ERROR: " + e.res['Error']['Message'])
+        else:
+            if res['ResponseMetadata']['HTTPStatusCode'] == 200:
+                for key, val in new_props.items():
+                    setattr(new_customer, key, val)
+                return new_customer
+            else:
+                return False
+
+    def get_registered_numbers(self):
+        '''
+            Fetch the registered numbers for the current CustomerID
+        '''
+        retval = {}
+        try:
+            res = self._db_map.query(
+                IndexName='RegisteredNumber-index',
+                KeyConditionExpression=Key('CustomerID').eq(self.CustomerID)
+            )
+        except ClientError as e:
+            log.error("ERROR: " + e.res['Error']['Message'])
+        else:
+            if res["ResponseMetadata"]["HTTPStatusCode"] == 200:
+                for row in res["Items"]:
+                    retval[row["PhoneNumber"]] = row["StudentID"]
+                return retval
+            else:
+                return False
+
+    def _push_data(self):
+        '''
+            Push all current values from object into the DB
+        '''
+        pass
+
     def _load_data(self):
         '''
-            Retrieve all the netadata for the current customer and
+            Retrieve all the metadata for the current customer and
             load into the object.
         '''
         try:
-            res = self._dynamo.query(
+            res = self._db_meta.query(
                 IndexName='SMSNumber-index',
                 KeyConditionExpression=Key('SMSNumber').eq(self.SMSNumber)
             )
         except ClientError as e:
-            log.debug("ERROR: " + e.res['Error']['Message'])
+            log.error("ERROR: " + e.res['Error']['Message'])
         else:
             if res["Count"] != 1:
                 log.error("WARNING -- DB query for Twilio number returned more than 1 result!")
             else:
-                # [a for a in dir(f) if not a.startswith('__') and not callable(getattr(f,a))]
-                self.CustomerID = res["Items"][0]["CustomerID"]
-                self.GoogleAccount = res["Items"][0]["GoogleAccount"]
-                self.SheetID = res["Items"][0]["SheetID"]
-                self.RegisteredNumbers = res["Items"][0]["RegisteredNumbers"]
-                self.SplitMethod = res["Items"][0]["SplitMethod"]
-                self.MessageQuota = res["Items"][0]["MessageQuota"]
-                self.LastQuotaUpdate = res["Items"][0]["LastQuotaUpdate"]
+                for param in [p for p in dir(self) if not p.startswith('_') and not callable(getattr(self,p))]:
+                    setattr(self, param, res["Items"][0].get(param))
+                self.RegisteredNumbers = self.get_registered_numbers()
+
 
     def register_number(self, phone_number, student_id, FORCE=False):
         ''' LOGIC:
@@ -85,28 +139,31 @@ class SMSCustomer(object):
 
         # check if the ID already exists for this customer
         if student_id in self.RegisteredNumbers.values():
+
             # what cell number is registered to this ID?
-            for cel, sid in self.RegisteredNumbers.iteritems():
-                if sid == student_id:
-                    already_registered = cel
-                    break
+            already_registered = self.RegisteredNumbers.keys()[self.RegisteredNumbers.values().index(student_id)]
+            # for cel, sid in self.RegisteredNumbers.iteritems():
+            #     if sid == student_id:
+            #         already_registered = cel
+            #         break
 
             if already_registered == phone_number:
                 return_msg = "This student ID ({}) is already registered to this phone number.".format(student_id)
             else:
                 # Called with FORCE flag means a UPDATE command. Delete old map, add new one
                 if FORCE == True:
-                    del self.RegisteredNumbers[cel]
-                    self.RegisteredNumbers[phone_number] = student_id
-                    self._update_number_map()
+                    self.remove_registered_number(student_id)
+                    self.add_registered_number(phone_number, student_id)
                     return_msg = "OK - student ID {} has been updated and is now registered to this phone number.".format(student_id)
                 else:
-                    return_msg = "This student ID ({}) is currently registered to another phone number (XXX-X{}). If you want to move the ID to this new number, text UPDATE {}".format(student_id, cel[len(cel)-3:], student_id)
+                    return_msg = "This student ID ({}) is currently registered to another phone number (XXX-X{}). If you want to move the ID to this new number, text UPDATE {}".format(student_id, already_registered[len(already_registered)-3:], student_id)
 
         # this is a new ID, so write it to the DB
         else:
-            self.RegisteredNumbers[phone_number] = student_id
-            self._update_number_map()
+            # if the phone_number is registered to another ID, delete the record
+            if phone_number in self.RegisteredNumbers:
+                self.remove_registered_number(self.RegisteredNumbers[phone_number])
+            self.add_registered_number(phone_number, student_id)
             return_msg = "OK - student ID {} has been registered to this phone number.".format(student_id)
 
         return {
@@ -149,14 +206,10 @@ class SMSCustomer(object):
             update_operator = '='
 
         try:
-            res = self._dynamo.update_item(
-                Key={
-                    'CustomerID': self.CustomerID
-                },
+            res = self._db_meta.update_item(
+                Key={ 'CustomerID': self.CustomerID },
                 UpdateExpression="{} {} {} :val".format(update_method, field_name, update_operator),
-                ExpressionAttributeValues={
-                    ':val': new_value
-                },
+                ExpressionAttributeValues={ ':val': new_value },
                 ReturnValues="UPDATED_NEW"
             )
         except ClientError as e:
@@ -169,11 +222,56 @@ class SMSCustomer(object):
             else:
                 return False
 
-    def _update_number_map(self):
+    def remove_registered_number(self, student_id):
         '''
-            Updates the map of registered phone numbers / IDs in the DB
+            Atomically delete a registered SMS<->ID pair from the DB
         '''
-        return self._update_field_value("RegisteredNumbers")
+        try:
+            res = self._db_map.delete_item(
+                Key={
+                    'CustomerID': self.CustomerID,
+                    'StudentID': student_id
+                }
+            )
+        except ClientError as e:
+            log.error(e.response['Error']['Message'])
+        else:
+            if res['ResponseMetadata']['HTTPStatusCode'] == 200:
+                # Remove the student_id from the list contained in the obj
+                # TODO eliminate a DB call by editing the object attr directly
+                self.RegisteredNumbers = self.get_registered_numbers()
+                return True
+            else:
+                return False
+
+    def add_registered_number(self, phone_number, student_id):
+        '''
+            Atomically add an SMS<->ID pair to the DB
+        '''
+        try:
+            res = self._db_map.put_item(
+                Item={
+                    'CustomerID': self.CustomerID,
+                    'StudentID': student_id,
+                    'PhoneNumber': phone_number
+                }
+            )
+        except ClientError as e:
+            log.error(e.response['Error']['Message'])
+        else:
+            if res['ResponseMetadata']['HTTPStatusCode'] == 200:
+                # Add the SMS<->ID pair to the list contained in the obj
+                # TODO eliminate a DB call by editing the object attr directly
+                self.RegisteredNumbers = self.get_registered_numbers()
+                return True
+            else:
+                return False
+
+    # def _update_number_map(self):
+    #     '''
+    #         Updates the map of registered phone numbers / IDs in the DB
+    #     '''
+    #     return self._update_field_value("RegisteredNumbers")
 
     def decrement_message_quota(self, message_count):
         '''

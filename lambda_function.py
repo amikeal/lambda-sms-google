@@ -29,7 +29,7 @@ def lambda_handler(event, context):
     sheet = GoogleSheet(customer.SheetID)
 
     # Determine if the sender is registering (or updating) an SMS number to an account
-    match = re.search("(REGISTER|UPDATE) (\S+)", msg_body, re.IGNORECASE)
+    match = re.search("(REGISTER|UPDATE)\W*(\w+)\W*(.*)", msg_body, re.IGNORECASE)
     if match:
         student_id = match.group(2)
         if match.group(1).upper() == 'UPDATE':

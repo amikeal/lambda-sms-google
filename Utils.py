@@ -150,8 +150,11 @@ class SMSCustomer(object):
             if already_registered == phone_number:
                 return_msg = "This student ID ({}) is already registered to this phone number.".format(student_id)
             else:
-                # Called with FORCE flag means a UPDATE command. Delete old map, add new one
+                # Called with FORCE flag means a UPDATE command. Delete old pairing, add new one
                 if FORCE == True:
+                    # if the phone_number is registered to another ID, delete that record, too
+                    if phone_number in self.RegisteredNumbers:
+                        self.remove_registered_number(self.RegisteredNumbers[phone_number])
                     self.remove_registered_number(student_id)
                     self.add_registered_number(phone_number, student_id)
                     return_msg = "OK - student ID {} has been updated and is now registered to this phone number.".format(student_id)

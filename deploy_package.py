@@ -7,7 +7,8 @@ import boto3
 
 ARCHIVE_NAME = 'lambda-package.zip'
 S3_BUCKET = 'amikeal-lambda-transfer'
-LAMBDA_FUNCTION = 'ProcessSMSCheckin'
+#LAMBDA_FUNCTION = 'ProcessSMSCheckin'
+LAMBDA_FUNCTION = 'AcceptAndLogCheckin'
 
 
 class ProgressPercentage(object):
@@ -77,12 +78,12 @@ response = lmda.update_function_code(
     Publish=True
 )
 
-if response['ResponseMetadata']['HTTPStatusCode'] == '200':
+if response['ResponseMetadata']['HTTPStatusCode'] == 200:
     print 'SUCCESS'
 else:
     from pprint import pprint
     print "ERROR updating Lambda function: \n\n"
-    pprint response
+    pprint(response)
 
 #
 # Command to install libraries in a directory for Lambda access:

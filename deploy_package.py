@@ -7,8 +7,8 @@ import boto3
 
 ARCHIVE_NAME = 'lambda-package.zip'
 S3_BUCKET = 'amikeal-lambda-transfer'
-#LAMBDA_FUNCTION = 'ProcessSMSCheckin'
-LAMBDA_FUNCTION = 'AcceptAndLogCheckin'
+LAMBDA_FUNCTION = 'ProcessSMSCheckin'
+#LAMBDA_FUNCTION = 'AcceptAndLogCheckin'
 
 
 class ProgressPercentage(object):

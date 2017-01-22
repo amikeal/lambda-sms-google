@@ -50,8 +50,8 @@ def lambda_handler(event, context):
         # We've confirmed the number is registered, now write the msg into the Google Sheet
         extra_fields = [sender_number, student_id]
         if sheet.record_submission(msg_body, extra_fields, customer.SplitMethod):
-            # Return a success message
-            return "Submission recorded; {}".format(timestamp('%Y-%m-%d %H:%M:%S'))
+            # Return a success message based on the Customer's template
+            return customer.render_response_message()
         else:
             # Raise an error to pass to Twilio
             return "Ruh roh! Something went wrong; please see your instructor."

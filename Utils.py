@@ -7,6 +7,7 @@ import decimal
 import logging
 import requests
 from time import strftime as timestamp
+from datetime import datetime as dt
 from oauth2client.service_account import ServiceAccountCredentials
 from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
@@ -35,8 +36,11 @@ class SMSCustomer(object):
     SheetID = ""
     RegisteredNumbers = {}
     SplitMethod = ""
+    ResponseMessage = ""
     MessageQuota = 0
     LastQuotaUpdate = None
+    RecordCreatedOn = None
+    RecordUpdatedOn = None
 
     _db_meta = None
     _db_map = None
@@ -60,9 +64,12 @@ class SMSCustomer(object):
             'SMSNumber': phone_number,
             'GoogleAccount': email_address,
             'SplitMethod': 'WHITESPACE',
+            'ResponseMessage': 'Submission recorded; {TIMESTAMP}',
             'MessageQuota': 100,
             'SheetID': '_',
-            'LastQuotaUpdate': timestamp('%Y-%m-%dT%H:%M:%S')
+            'LastQuotaUpdate': dt.now().isoformat(),
+            'RecordCreatedOn': dt.now().isoformat(),
+            'RecordUpdatedOn': ''
         }
 
         # push basic record to the DB
@@ -125,7 +132,6 @@ class SMSCustomer(object):
                 for param in [p for p in dir(self) if not p.startswith('_') and not callable(getattr(self,p))]:
                     setattr(self, param, res["Items"][0].get(param))
                 self.RegisteredNumbers = self.get_registered_numbers()
-
 
     def register_number(self, phone_number, student_id, FORCE=False):
         ''' LOGIC:
@@ -211,8 +217,8 @@ class SMSCustomer(object):
         try:
             res = self._db_meta.update_item(
                 Key={ 'CustomerID': self.CustomerID },
-                UpdateExpression="{} {} {} :val".format(update_method, field_name, update_operator),
-                ExpressionAttributeValues={ ':val': new_value },
+                UpdateExpression="{} {} {} :val, RecordUpdatedOn = :time".format(update_method, field_name, update_operator),
+                ExpressionAttributeValues={ ':val': new_value, ':time': dt.now().isoformat() },
                 ReturnValues="UPDATED_NEW"
             )
         except ClientError as e:
@@ -256,7 +262,8 @@ class SMSCustomer(object):
                 Item={
                     'CustomerID': self.CustomerID,
                     'StudentID': student_id,
-                    'PhoneNumber': phone_number
+                    'PhoneNumber': phone_number,
+                    'RecordCreatedOn': dt.now().isoformat()
                 }
             )
         except ClientError as e:
@@ -269,12 +276,6 @@ class SMSCustomer(object):
                 return True
             else:
                 return False
-
-    # def _update_number_map(self):
-    #     '''
-    #         Updates the map of registered phone numbers / IDs in the DB
-    #     '''
-    #     return self._update_field_value("RegisteredNumbers")
 
     def decrement_message_quota(self, message_count):
         '''
@@ -292,6 +293,13 @@ class SMSCustomer(object):
         '''
         return self.RegisteredNumbers.get(phone_number)
 
+    def render_response_message(self):
+        replacements = {
+            'TIMESTAMP': timestamp('%Y-%m-%d %H:%M:%S'),
+            'DATE': timestamp('%Y-%m-%d'),
+            'TIME': timestamp('%H:%M')
+        }
+        return self.ResponseMessage.format(**replacements)
 
 class GoogleSheet(object):
 

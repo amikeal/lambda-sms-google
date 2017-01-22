@@ -1,10 +1,8 @@
 import json
 import requests
 import logging
-import re
 from Utils import SMSCustomer, GoogleSheet
 from time import strftime as timestamp
-from oauth2client.service_account import ServiceAccountCredentials
 
 # Set a logging level
 LOG_LEVEL = logging.DEBUG

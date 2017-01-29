@@ -299,8 +299,8 @@ class SMSCustomer(object):
             'TIMESTAMP': timestamp('%Y-%m-%d %H:%M:%S'),
             'DATE': timestamp('%Y-%m-%d'),
             'TIME': timestamp('%H:%M'),
-            'STUDENTID': sender_data[0],
-            'SENDER_NUMBER': sender_data[1]
+            'STUDENTID': sender_data[1],
+            'SENDER_NUMBER': sender_data[0]
         }
         return self.ResponseMessage.format(**replacements)
 

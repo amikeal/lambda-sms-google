@@ -346,10 +346,14 @@ class GoogleSheet(object):
             if d['properties']['title'] == worksheet_name:
                 log.debug("Found worksheet... using worksheet for writing")
                 return True
-            else:
-                log.info("Named worksheet not found... creating new worksheet")
-                r = self._session.post("{}/{}:batchUpdate".format(self.API_BASE, self.SHEET_KEY), data=json.dumps(payload))
-                return True
+        log.info("Named worksheet not found... creating new worksheet")
+        r = self._session.post("{}/{}:batchUpdate".format(self.API_BASE, self.SHEET_KEY), data=json.dumps(payload))
+        if r.status_code == 200:
+            log.debug("JSON Response: {}".format(r.json()))
+            return True
+        else:
+            log.error("ERROR creating new worksheet: HTTP Status {}; JSON: {}".format(r.status_code, r.json()))
+            return False
 
     # Parse the message, build the field list, and add a row to the Google Sheet
     def record_submission(self, message, extra_fields, split_method='WHITESPACE'):

@@ -293,11 +293,14 @@ class SMSCustomer(object):
         '''
         return self.RegisteredNumbers.get(phone_number)
 
-    def render_response_message(self):
+    def render_response_message(self, sender_data):
+        # TODO Refactor this method to handle bad / no args
         replacements = {
             'TIMESTAMP': timestamp('%Y-%m-%d %H:%M:%S'),
             'DATE': timestamp('%Y-%m-%d'),
-            'TIME': timestamp('%H:%M')
+            'TIME': timestamp('%H:%M'),
+            'STUDENTID': sender_data[0],
+            'SENDER_NUMBER': sender_data[1]
         }
         return self.ResponseMessage.format(**replacements)
 
@@ -338,6 +341,7 @@ class GoogleSheet(object):
         r = self._session.get("{}/{}?&fields=sheets.properties".format(self.API_BASE, self.SHEET_KEY))
         response = json.loads(r.content)
         log.info("Checking for existing worksheet with title: '{}'".format(worksheet_name))
+        log.debug("JSON response: {}".format(repr(response)))
         for d in response['sheets']:
             if d['properties']['title'] == worksheet_name:
                 log.debug("Found worksheet... using worksheet for writing")

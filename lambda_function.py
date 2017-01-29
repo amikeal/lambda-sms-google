@@ -51,7 +51,8 @@ def lambda_handler(event, context):
         extra_fields = [sender_number, student_id]
         if sheet.record_submission(msg_body, extra_fields, customer.SplitMethod):
             # Return a success message based on the Customer's template
-            return customer.render_response_message()
+            # TODO Refactor render_message() to gaurd against bad args
+            return customer.render_response_message(extra_fields)
         else:
             # Raise an error to pass to Twilio
             return "Ruh roh! Something went wrong; please see your instructor."

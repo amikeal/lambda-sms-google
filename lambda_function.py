@@ -49,7 +49,7 @@ def lambda_handler(event, context):
 
         # We've confirmed the number is registered, now write the msg into the Google Sheet
         extra_fields = [sender_number, student_id]
-        if sheet.record_submission(msg_body, extra_fields, customer.SplitMethod):
+        if sheet.record_submission(msg_body, extra_fields, customer.SplitMethod, customer.TimeZoneOffset):
             # Return a success message based on the Customer's template
             # TODO Refactor render_message() to gaurd against bad args
             return customer.render_response_message(extra_fields)

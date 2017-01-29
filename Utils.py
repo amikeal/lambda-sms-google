@@ -6,8 +6,8 @@ import re
 import decimal
 import logging
 import requests
-from time import strftime as timestamp
 from datetime import datetime as dt
+from datetime import timedelta
 from oauth2client.service_account import ServiceAccountCredentials
 from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
@@ -37,6 +37,7 @@ class SMSCustomer(object):
     RegisteredNumbers = {}
     SplitMethod = ""
     ResponseMessage = ""
+    TimeZoneOffset = 0
     MessageQuota = 0
     LastQuotaUpdate = None
     RecordCreatedOn = None
@@ -65,6 +66,7 @@ class SMSCustomer(object):
             'GoogleAccount': email_address,
             'SplitMethod': 'WHITESPACE',
             'ResponseMessage': 'Submission recorded; {TIMESTAMP}',
+            'TimeZoneOffset': -6,
             'MessageQuota': 100,
             'SheetID': '_',
             'LastQuotaUpdate': dt.now().isoformat(),
@@ -131,6 +133,7 @@ class SMSCustomer(object):
             else:
                 for param in [p for p in dir(self) if not p.startswith('_') and not callable(getattr(self,p))]:
                     setattr(self, param, res["Items"][0].get(param))
+                self.TimeZoneOffset = int(self.TimeZoneOffset)
                 self.RegisteredNumbers = self.get_registered_numbers()
 
     def register_number(self, phone_number, student_id, FORCE=False):
@@ -295,10 +298,14 @@ class SMSCustomer(object):
 
     def render_response_message(self, sender_data):
         # TODO Refactor this method to handle bad / no args
+
+        # Get current timestamp with TZ offset
+        timestamp = dt.now() + timedelta(hours=self.TimeZoneOffset)
+
         replacements = {
-            'TIMESTAMP': timestamp('%Y-%m-%d %H:%M:%S'),
-            'DATE': timestamp('%Y-%m-%d'),
-            'TIME': timestamp('%H:%M'),
+            'TIMESTAMP': timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+            'DATE': timestamp.strftime('%Y-%m-%d'),
+            'TIME': timestamp.strftime('%H:%M'),
             'STUDENTID': sender_data[1],
             'SENDER_NUMBER': sender_data[0]
         }
@@ -356,21 +363,26 @@ class GoogleSheet(object):
             return False
 
     # Parse the message, build the field list, and add a row to the Google Sheet
-    def record_submission(self, message, extra_fields, split_method='WHITESPACE'):
+    def record_submission(self, message, extra_fields, split_method='WHITESPACE', tz_offset=0):
         log.debug("GoogleSheet.record_submission() called with args '{}', '{}', '{}'".format(
             message, extra_fields, split_method))
 
+        # Get the current date/time with TZ offset
+        timestamp = dt.now() + timedelta(hours=int(tz_offset))
+
         # Set the worksheet title to today's date
-        worksheet_title = timestamp('%Y-%m-%d')
+        worksheet_title = timestamp.strftime('%Y-%m-%d')
 
         # Parse the message according to the split_method param
         if split_method == 'COMMAS':
             split_text = re.split('\s*,\s*', message) # split on commas only
+        elif split_method == 'SEMICOLONS':
+            split_text = re.split('\s*;\s*', message) # split on smicolons only
         else:
             split_text = re.split('\W+', message)  # split on any non-word char
 
         # Combine the elements (plus a timestamp) into the complete field list
-        field_list = [timestamp('%Y-%m-%d %H:%M:%S')] + extra_fields + split_text
+        field_list = [timestamp.strftime('%Y-%m-%d %H:%M:%S')] + extra_fields + split_text
 
         # Call the add_row() method with the assembled arguments
         return self.add_row(worksheet_title, field_list)

@@ -298,6 +298,7 @@ class SMSCustomer(object):
 
     def render_response_message(self, sender_data):
         # TODO Refactor this method to handle bad / no args
+        # foo
 
         # Get current timestamp with TZ offset
         timestamp = dt.now() + timedelta(hours=self.TimeZoneOffset)

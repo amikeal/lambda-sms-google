@@ -408,6 +408,7 @@ class GoogleSheet(object):
 
         if r.status_code == requests.codes.ok:
             log.debug("Appended: {} to Worksheet named {}".format(field_list, worksheet_title))
+            log.debug("Response text: {}".format(r.text))
             return True
         else:
             log.debug("API call returned non-200 status code: {}".format(r.status_code))
